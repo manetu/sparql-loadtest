@@ -1,0 +1,11 @@
+PREFIX rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX manetu: <http://manetu.com/manetu/>
+PREFIX mmeta:  <http://manetu.io/rdf/metadata/0.1/>
+
+SELECT ?uuid
+
+WHERE  {
+       ?m rdf:object ?email ;
+          rdf:predicate manetu:email ;
+          mmeta:uuid ?uuid .
+}

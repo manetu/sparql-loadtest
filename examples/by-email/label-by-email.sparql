@@ -1,0 +1,9 @@
+PREFIX manetu: <http://manetu.com/manetu/>
+PREFIX mmeta:  <http://manetu.io/rdf/metadata/0.1/>
+
+SELECT ?label
+
+WHERE  {
+       ?s manetu:email ?email ;
+          mmeta:vaultLabel ?label .
+}
