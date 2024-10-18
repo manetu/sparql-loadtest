@@ -118,9 +118,14 @@
                 (let [failures (get-in summaries [0 :count])]
                   {:failures failures :summaries summaries})))))
 
+(defn ->count
+  [nr count]
+  (str (int count) " (" (* (/ count nr) 100) "%)"))
+
 (defn render
   [{:keys [nr] :as ctx} {:keys [total-duration summaries] :as stats}]
-  (println (table [:description :count :min :mean :stddev :p50 :p90 :p99 :max :rate] (map #(update % :count (fn [count] (str (int count) " (" (* (/ count nr) 100) "%)"))) summaries)))
+  (println (table [:description :count :min :mean :stddev :p50 :p90 :p99 :max :rate]
+                  (map #(update % :count (partial ->count nr)) summaries)))
   (println "Total Duration:" (str total-duration "msecs")))
 
 (defn process
