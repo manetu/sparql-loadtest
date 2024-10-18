@@ -13,15 +13,10 @@ This utility helps measure your cluster's overall query performance and helps op
 
 ## Building
 
-### Prerequisites
-
-In addition to the requirements for installation, you will also need:
-
-- Leiningen
-
 ```
 $ make
 ```
+
 ## Usage
 
 ```shell
@@ -104,4 +99,3 @@ If successful,  the test should display something similar to the following:
 |-------------+----------------+-------+--------+--------+--------+--------+--------+--------+--------|
 Total Duration: 20403.423232msecs
 ```
-

@@ -4,6 +4,7 @@ NAME=manetu-sparql-loadtest
 BINDIR ?= /usr/local/bin
 OUTPUT=target/$(NAME)
 SHELL=/bin/bash -o pipefail
+LEIN ?= ./lein
 
 SRCS += $(shell find src -type f)
 
@@ -15,17 +16,17 @@ all: scan bin
 bin: $(OUTPUT)
 
 scan:
-	lein cljfmt check
-	lein bikeshed -m 120 -n false
-	#lein kibit
-	lein eastwood
+	$(LEIN) cljfmt check
+	$(LEIN) bikeshed -m 120 -n false
+	#$(LEIN) kibit
+	$(LEIN) eastwood
 
 .PHONY: test
 test:
-	lein cloverage --fail-threshold $(COVERAGE_THRESHOLD) $(patsubst %,-e %, $(COVERAGE_EXCLUSION)) | perl -pe 's/\e\[?.*?[\@-~]//g'
+	$(LEIN) cloverage --fail-threshold $(COVERAGE_THRESHOLD) $(patsubst %,-e %, $(COVERAGE_EXCLUSION)) | perl -pe 's/\e\[?.*?[\@-~]//g'
 
 $(OUTPUT): $(SRCS) Makefile project.clj
-	@lein bin
+	@$(LEIN) bin
 
 $(PREFIX)$(BINDIR):
 	mkdir -p $@
@@ -35,7 +36,7 @@ install: $(OUTPUT) $(PREFIX)$(BINDIR)
 
 clean:
 	@echo "Cleaning up.."
-	@lein clean
+	@$(LEIN) clean
 	-@rm -rf target
 	-@rm -f *~
 
