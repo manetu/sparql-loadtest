@@ -21,6 +21,7 @@
                  [doric "0.9.0"]
                  [org.clojure/data.csv "1.1.0"]
                  [kixi/stats "0.5.6"]
+                 [redux "0.1.4"]
                  [medley "1.4.0"]
                  [district0x/graphql-query "1.0.6"]
                  [http-kit "2.7.0-RC1"]
