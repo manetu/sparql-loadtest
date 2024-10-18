@@ -7,11 +7,11 @@
             [taoensso.timbre :as log]
             [clojure.core.async :refer [<! go go-loop] :as async]
             [progrock.core :as pr]
-            [kixi.stats.core :as kixi]
             [doric.core :refer [table]]
             [ring.util.codec :as ring.codec]
             [manetu.sparql-loadtest.binding-loader :as binding-loader]
-            [manetu.sparql-loadtest.driver.api :as driver.api]))
+            [manetu.sparql-loadtest.driver.api :as driver.api]
+            [manetu.sparql-loadtest.stats :as stats]))
 
 (defn execute-query
   [{:keys [driver] :as ctx} query bindings]
@@ -72,9 +72,11 @@
          (let [result (<! (async/transduce xform f (f) ch))]
            (resolve result)))))))
 
-(defn compute-summary-stats
-  [options n mux]
-  (transduce-promise options n mux (map :duration) kixi/summary))
+(defn round2
+  "Round a double to the given precision (number of significant digits)"
+  [precision ^double d]
+  (let [factor (Math/pow 10 precision)]
+    (/ (Math/round (* d factor)) factor)))
 
 (defn successful?
   [{:keys [success]}]
@@ -84,30 +86,42 @@
   [{:keys [success]}]
   (false? success))
 
-(defn count-msgs
-  [ctx n mux pred]
-  (transduce-promise ctx n mux (filter pred) kixi/count))
+(defn rows-pred?
+  [pred {{:keys [rows]} :result :as x}]
+  (log/debug "x:" x)
+  (pred rows))
+
+(def zero-rows? (partial rows-pred? zero?))
+(def some-rows? (partial rows-pred? pos?))
+
+(defn compute-summary-stats
+  [options n mux pred]
+  (-> (transduce-promise options n mux (comp (filter pred) (map :duration)) stats/summary)
+      (p/then (fn [{:keys [dist] :as summary}]
+                (-> summary
+                    (dissoc :dist)
+                    (merge dist)
+                    (as-> $ (m/map-vals #(round2 2 (or % 0)) $)))))))
 
 (defn compute-stats
   [ctx n mux]
-  (-> (p/all [(compute-summary-stats ctx n mux)
-              (count-msgs ctx n mux successful?)
-              (count-msgs ctx n mux failed?)])
-      (p/then (fn [[summary s f]] (assoc summary :successes s :failures f)))))
-
-(defn round2
-  "Round a double to the given precision (number of significant digits)"
-  [precision ^double d]
-  (let [factor (Math/pow 10 precision)]
-    (/ (Math/round (* d factor)) factor)))
+  (-> (p/all (conj (map (partial compute-summary-stats ctx n mux)
+                        [failed?
+                         (every-pred successful? zero-rows?)
+                         (every-pred successful? some-rows?)
+                         identity])))
+      (p/then (fn [[failed no-data data total :as summaries]]
+                (log/trace "summaries:" summaries)
+                (let [failures (get failed :count)]
+                  {:failures failures :summaries [(assoc failed :description "Errors")
+                                                  (assoc no-data :description "Not found")
+                                                  (assoc data :description "Successes")
+                                                  (assoc total :description "Total")]})))))
 
 (defn render
-  [ctx {:keys [failures] :as stats}]
-  (let [stats (m/map-vals (partial round2 2) stats)]
-    (println (table [:successes :failures :min :q1 :median :q3 :max :total-duration :rate] [stats]))
-    (if (pos? failures)
-      -1
-      0)))
+  [{:keys [nr] :as ctx} {:keys [total-duration summaries] :as stats}]
+  (println (table [:description :count :min :mean :stddev :p50 :p90 :p99 :max :rate] (map #(update % :count (fn [count] (str (int count) " (" (* (/ count nr) 100) "%)"))) summaries)))
+  (println "Total Duration:" (str total-duration "msecs")))
 
 (defn process
   [{:keys [concurrency nr] :as ctx}]
@@ -119,8 +133,17 @@
                  (show-progress ctx nr mux)
                  (compute-stats ctx nr mux)])
          (p/then
-          (fn [[start _ _ {:keys [successes] :as stats}]]
+          (fn [[start _ _ stats]]
             (let [end (t/now)
                   d (t/duration end start)]
-              (assoc stats :total-duration d :rate (* (/ successes d) 1000)))))
-         (p/then (partial render ctx)))))
+              (-> stats
+                  (update :summaries (fn [summaries]
+                                       (map (fn [{:keys [count] :as summary}]
+                                              (assoc summary :rate (round2 2 (* (/ count d) 1000))))
+                                            summaries)))
+                  (assoc :total-duration d)))))
+         (p/then (fn [{:keys [failures] :as stats}]
+                   (render ctx stats)
+                   (if (pos? failures)
+                     -1
+                     0))))))

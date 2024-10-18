@@ -42,9 +42,13 @@
                                                             :encoding :URL
                                                             :bindings (->bindings bindings)}
                                              [:name :value]]]})})
-      (p/then (fn [r]
-                (log/trace "result:" r)
-                {}))))
+      (p/then (fn [{{:strs [data errors]} :body :as r}]
+                (log/trace "result:" r "data:" data "errors:" errors)
+                (if (some? errors)
+                  (p/rejected (ex-info "graphql error" r))
+                  (let [rows (-> data (get "sparql_query") count)]
+                    (log/trace "rows:" rows)
+                    {:rows rows}))))))
 
 (defrecord GraphQLDriver [ctx]
   api/LoadDriver
