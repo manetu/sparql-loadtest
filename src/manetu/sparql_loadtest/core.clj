@@ -94,29 +94,29 @@
 (def zero-rows? (partial rows-pred? zero?))
 (def some-rows? (partial rows-pred? pos?))
 
+(def stat-preds
+  [{:description "Errors"    :pred failed?}
+   {:description "Not found" :pred (every-pred successful? zero-rows?)}
+   {:description "Successes" :pred (every-pred successful? some-rows?)}
+   {:description "Total"     :pred identity}])
+
 (defn compute-summary-stats
-  [options n mux pred]
+  [options n mux {:keys [description pred]}]
   (-> (transduce-promise options n mux (comp (filter pred) (map :duration)) stats/summary)
       (p/then (fn [{:keys [dist] :as summary}]
                 (-> summary
                     (dissoc :dist)
                     (merge dist)
-                    (as-> $ (m/map-vals #(round2 2 (or % 0)) $)))))))
+                    (as-> $ (m/map-vals #(round2 2 (or % 0)) $))
+                    (assoc :description description))))))
 
 (defn compute-stats
   [ctx n mux]
-  (-> (p/all (conj (map (partial compute-summary-stats ctx n mux)
-                        [failed?
-                         (every-pred successful? zero-rows?)
-                         (every-pred successful? some-rows?)
-                         identity])))
-      (p/then (fn [[failed no-data data total :as summaries]]
+  (-> (p/all (conj (map (partial compute-summary-stats ctx n mux) stat-preds)))
+      (p/then (fn [summaries]
                 (log/trace "summaries:" summaries)
-                (let [failures (get failed :count)]
-                  {:failures failures :summaries [(assoc failed :description "Errors")
-                                                  (assoc no-data :description "Not found")
-                                                  (assoc data :description "Successes")
-                                                  (assoc total :description "Total")]})))))
+                (let [failures (get-in summaries [0 :count])]
+                  {:failures failures :summaries summaries})))))
 
 (defn render
   [{:keys [nr] :as ctx} {:keys [total-duration summaries] :as stats}]
