@@ -17,7 +17,7 @@
 
 (defn record-seq
   [rdr nr]
-  (->> rdr parse-csv cycle (take nr) doall))
+  (->> rdr parse-csv cycle (take nr)))
 
 (defn csv->bindings
   "Given 'path' to a .csv file, return 'nr' records, possibly repeating if nr exceeds the record count in the file"
@@ -26,8 +26,9 @@
   (let [ch (async/chan)]
     (async/thread
       (with-open [rdr (io/reader path)]
-        (let [coll (record-seq rdr nr)]
-          (async/onto-chan!! ch coll))))
+        (doseq [record (record-seq rdr nr)]
+          (async/>!! ch record))
+        (async/close! ch)))
     ch))
 
 (defn null-bindings
