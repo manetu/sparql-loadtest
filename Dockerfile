@@ -10,8 +10,12 @@ RUN \
         make \
         wget
 
+COPY project.clj .
+COPY lein .
+RUN ./lein deps
+
 COPY . .
-RUN ls -la && make all
+RUN make bin
 
 ENV MANETU_URL="https://ingress.manetu-platform"
 ENV LOG_LEVEL="info"

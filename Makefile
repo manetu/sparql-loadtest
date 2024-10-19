@@ -21,6 +21,10 @@ scan:
 	#$(LEIN) kibit
 	$(LEIN) eastwood
 
+.PHONY: docker
+docker:
+	docker build -t $(NAME):latest .
+
 .PHONY: test
 test:
 	$(LEIN) cloverage --fail-threshold $(COVERAGE_THRESHOLD) $(patsubst %,-e %, $(COVERAGE_EXCLUSION)) | perl -pe 's/\e\[?.*?[\@-~]//g'
