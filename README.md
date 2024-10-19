@@ -99,3 +99,93 @@ If successful,  the test should display something similar to the following:
 |-------------+----------------+-------+--------+--------+--------+--------+--------+--------+--------|
 Total Duration: 20403.423232msecs
 ```
+
+## Running on Kubernetes
+
+The following instructions allow you to deploy this tool into a Kubernetes instance.  You would typically use the Kubernetes option to run the tool in close proximity to a Manetu instance running in the same cluster, though this is not strictly required.
+
+Manetu hosts a Docker-based version of this tool on Dockerhub:
+
+[https://hub.docker.com/repository/docker/manetuops/sparql-loadtest/general](https://hub.docker.com/repository/docker/manetuops/sparql-loadtest/general)
+
+We will use this to deploy into Kubernetes.
+
+### Setup
+
+To do so, you must first inject a Personal Access Token to your Manetu instance as a secret into your cluster for the tool to use, like so:
+
+```shell
+kubectl create secret generic manetu-sparql-loadtest --from-literal=MANETU_TOKEN=<your token>
+```
+
+### Launching the test
+
+Next, we can define a Kubernetes [Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/) like so:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: manetu-sparql-loadtest
+spec:
+  template:
+    spec:
+      containers:
+      - name: sparql-loadtest
+        image: manetuops/sparql-loadtest:0.0.1
+        imagePullPolicy: Always
+        env:
+          - name: MANETU_URL
+            value: https://ingress.manetu-platform
+          - name: LOG_LEVEL
+            value: info
+          - name: LOADTEST_CONCURRENCY
+            value: "64"
+          - name: LOADTEST_NR
+            value: "10000"
+          - name: LOADTEST_QUERY
+            value: "/etc/manetu/loadtest/examples/label-by-email.sparql"
+          - name: LOADTEST_BINDINGS
+            value: "/etc/manetu/loadtest/examples/bindings.csv"
+        envFrom:
+          - secretRef:
+              name: manetu-sparql-loadtest
+      restartPolicy: Never
+
+```
+For convenience, this file may be found in this repository as [kubernetes/job.yaml](./kubernetes/job.yaml).  You may apply this like so:
+
+```shell
+kubectl apply -f kubernetes/job.yaml
+```
+> N.B.  The container supports overriding the query and bindings with the environment variables LOADTEST_QUERY and LOADTEST_BINDINGS, respectively.  You may replace the default examples using techniques such as mounting Kubernetes [ConfigMaps as volumes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#add-configmap-data-to-a-specific-path-in-the-volume).  This is left as an exercise to the reader.
+
+### Obtaining results
+
+You may use 'kubectl logs' to obtain the test results once the run is completed.  First, obtain the name of the pod, like so:
+
+```shell
+$ kubectl get pods
+NAME                           READY   STATUS      RESTARTS   AGE
+manetu-sparql-loadtest-4bmkh   0/1     Completed   0          28m
+```
+
+Then, query for the job logs, like so:
+
+```shell
+$ kubectl logs manetu-sparql-loadtest-4bmkh
++ exec java -jar /usr/local/app.jar -u https://ingress.manetu-platform -l info --no-progress --insecure --concurrency 64 --nr 10000 --query /etc/manetu/loadtest/examples/label-by-email.sparql --bindings /etc/manetu/loadtest/examples/bindings.csv
+2024-10-18T23:51:00.921Z INFO processing 10000 requests with concurrency 64
+2024-10-18T23:51:00.943Z INFO Loading bindings from: /etc/manetu/loadtest/examples/bindings.csv
+|-------------+----------------+-------+--------+--------+--------+--------+--------+--------+--------|
+| Description |      Count     |  Min  |  Mean  | Stddev |   P50  |   P90  |   P99  |   Max  |  Rate  |
+|-------------+----------------+-------+--------+--------+--------+--------+--------+--------+--------|
+| Errors      | 0 (0.0%)       | 0.0   | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    |
+| Not found   | 0 (0.0%)       | 0.0   | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    | 0.0    |
+| Successes   | 10000 (100.0%) | 26.37 | 109.17 | 42.2   | 109.07 | 144.32 | 186.83 | 586.19 | 489.78 |
+| Total       | 10000 (100.0%) | 26.37 | 109.17 | 42.2   | 109.07 | 144.32 | 186.83 | 586.19 | 489.78 |
+|-------------+----------------+-------+--------+--------+--------+--------+--------+--------+--------|
+Total Duration: 20417.142784msecs
+```
+
+> Tip: If the job is experiencing errors, you may set LOG_LEVEL to 'trace' to diagnose the problem.

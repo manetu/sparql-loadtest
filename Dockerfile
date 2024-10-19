@@ -13,12 +13,13 @@ RUN \
 COPY . .
 RUN ls -la && make all
 
-ENV MANETU_URL="ingress.manetu-platform"
+ENV MANETU_URL="https://ingress.manetu-platform"
 ENV LOG_LEVEL="info"
 ENV LOADTEST_CONCURRENCY="64"
 ENV LOADTEST_NR="10000"
-ENV LOADTEST_QUERY=/etc/manetu/loadtest/examples/label-by-email.sparql
-ENV LOADTEST_BINDINGS=/etc/manetu/loadtest/examples/bindings.csv
+ENV LOADTEST_QUERY="/etc/manetu/loadtest/examples/label-by-email.sparql"
+ENV LOADTEST_BINDINGS="/etc/manetu/loadtest/examples/bindings.csv"
+ENV LOADTEST_EXTRA_OPTIONS="--insecure"
 
 COPY target/uberjar/app.j* /usr/local/
 COPY docker/entrypoint.sh /usr/local/bin
