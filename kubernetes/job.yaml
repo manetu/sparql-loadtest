@@ -5,9 +5,10 @@ metadata:
 spec:
   template:
     spec:
+      restartPolicy: Never
       containers:
       - name: sparql-loadtest
-        image: manetuops/sparql-loadtest:0.0.1
+        image: manetuops/sparql-loadtest:latest
         imagePullPolicy: Always
         env:
           - name: MANETU_URL
@@ -19,10 +20,17 @@ spec:
           - name: LOADTEST_NR
             value: "10000"
           - name: LOADTEST_QUERY
-            value: "/etc/manetu/loadtest/examples/label-by-email.sparql"
+            value: "/etc/manetu/loadtest/query.sparql"
           - name: LOADTEST_BINDINGS
-            value: "/etc/manetu/loadtest/examples/bindings.csv"
+            value: "/etc/manetu/loadtest/bindings.csv"
         envFrom:
           - secretRef:
               name: manetu-sparql-loadtest
-      restartPolicy: Never
+        volumeMounts:
+          - name: data
+            mountPath: "/etc/manetu/loadtest"
+            readOnly: true
+      volumes:
+      - name: data
+        configMap:
+          name: manetu-sparql-loadtest

@@ -112,15 +112,27 @@ We will use this to deploy into Kubernetes.
 
 ### Setup
 
-To do so, you must first inject a Personal Access Token to your Manetu instance as a secret into your cluster for the tool to use, like so:
+#### Credentials
+
+You must inject a Personal Access Token to your Manetu instance as a Kubernetes [Secret](https://kubernetes.io/docs/concepts/configuration/secret/) into your cluster for the tool to use, like so:
 
 ```shell
 kubectl create secret generic manetu-sparql-loadtest --from-literal=MANETU_TOKEN=<your token>
 ```
 
+#### Query/Bindings data
+
+You must also deploy the query/bindings you wish to use as a Kubernetes [ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/).  The ConfigMap should have two bindings named 'bindings.csv' and 'query.sparql', which we will use to inject the files into our deployment in the next step.
+
+##### Example
+
+``` shell
+kubectl create configmap manetu-sparql-loadtest --from-file=bindings.csv=examples/by-uuid/bindings.csv --from-file=query.sparql=examples/by-uuid/query.sparql
+```
+
 ### Launching the test
 
-Next, we can define a Kubernetes [Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/) like so:
+Next, we can define a Kubernetes [Job](https://kubernetes.io/docs/concepts/workloads/controllers/job/) that leverages our secret/configmap like so:
 
 ```yaml
 apiVersion: batch/v1
@@ -130,9 +142,10 @@ metadata:
 spec:
   template:
     spec:
+      restartPolicy: Never
       containers:
       - name: sparql-loadtest
-        image: manetuops/sparql-loadtest:0.0.1
+        image: manetuops/sparql-loadtest:latest
         imagePullPolicy: Always
         env:
           - name: MANETU_URL
@@ -144,25 +157,31 @@ spec:
           - name: LOADTEST_NR
             value: "10000"
           - name: LOADTEST_QUERY
-            value: "/etc/manetu/loadtest/examples/label-by-email.sparql"
+            value: "/etc/manetu/loadtest/query.sparql"
           - name: LOADTEST_BINDINGS
-            value: "/etc/manetu/loadtest/examples/bindings.csv"
+            value: "/etc/manetu/loadtest/bindings.csv"
         envFrom:
           - secretRef:
               name: manetu-sparql-loadtest
-      restartPolicy: Never
-
+        volumeMounts:
+          - name: data
+            mountPath: "/etc/manetu/loadtest"
+            readOnly: true
+      volumes:
+      - name: data
+        configMap:
+          name: manetu-sparql-loadtest
 ```
-For convenience, this file may be found in this repository as [kubernetes/job.yaml](./kubernetes/job.yaml).  You may apply this like so:
+
+For convenience, this file is available in this repository as [kubernetes/job.yaml](./kubernetes/job.yaml).  You may apply this like so:
 
 ```shell
 kubectl apply -f kubernetes/job.yaml
 ```
-> N.B.  The container supports overriding the query and bindings with the environment variables LOADTEST_QUERY and LOADTEST_BINDINGS, respectively.  You may replace the default examples using techniques such as mounting Kubernetes [ConfigMaps as volumes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#add-configmap-data-to-a-specific-path-in-the-volume).  This is left as an exercise to the reader.
 
 ### Obtaining results
 
-You may use 'kubectl logs' to obtain the test results once the run is completed.  First, obtain the name of the pod, like so:
+Once the job is completed, you may use 'kubectl logs' to obtain the test results.  First, obtain the name of the pod, like so:
 
 ```shell
 $ kubectl get pods
