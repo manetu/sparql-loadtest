@@ -7,7 +7,7 @@
 
 (defn -sparql-query [query bindings]
   (log/trace "NULL: sparql-query->" query bindings)
-  (p/resolved {}))
+  (p/resolved {:rows 1}))
 
 (defrecord NullDriver []
   api/LoadDriver
