@@ -16,17 +16,17 @@
   (csv->maps (csv/read-csv rdr)))
 
 (defn record-seq
-  [rdr nr]
-  (->> rdr parse-csv cycle (take nr)))
+  [rdr nr batch-size]
+  (->> rdr parse-csv cycle (take nr) (partition-all batch-size)))
 
 (defn csv->bindings
   "Given 'path' to a .csv file, return 'nr' records, possibly repeating if nr exceeds the record count in the file"
-  [path nr]
+  [path nr batch-size]
   (log/info "Loading bindings from:" path)
   (let [ch (async/chan)]
     (async/thread
       (with-open [rdr (io/reader path)]
-        (doseq [record (record-seq rdr nr)]
+        (doseq [record (record-seq rdr nr batch-size)]
           (async/>!! ch record))
         (async/close! ch)))
     ch))
@@ -38,7 +38,7 @@
   (async/to-chan! (repeat nr {})))
 
 (defn get-bindings
-  [bindings nr]
+  [bindings nr batch-size]
   (if (some? bindings)
-    (csv->bindings bindings nr)
+    (csv->bindings bindings nr batch-size)
     (null-bindings nr)))
