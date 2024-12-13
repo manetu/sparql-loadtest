@@ -49,6 +49,10 @@
     :default 64
     :parse-fn parse-long
     :validate [pos? "Must be a positive integer"]]
+   [nil "--batch-size NUM" "The size of the batch request"
+    :default 1
+    :parse-fn parse-long
+    :validate [pos? "Must be a positive integer"]]
    ["-d" "--driver DRIVER" driver-description
     :default :gql
     :parse-fn keyword

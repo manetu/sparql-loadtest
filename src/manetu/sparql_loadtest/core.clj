@@ -33,19 +33,36 @@
               (assoc result
                      :duration d)))))))
 
+(defn- pipeline-blocking
+  [nr xf in]
+  (let [out (async/chan nr)]
+    (async/pipeline-blocking nr out xf in)
+    out))
+
+(defn async-xform
+  "Applies a transform function to messages in a channel"
+  [xform in]
+  (let [out (async/chan 32 xform)]
+    (async/pipe in out)
+    out))
+
+(defn async-pipe
+  "Identical to core.async/pipe, except the pipe order is reversed, making it compatible with
+  other manetu pipelining techniques that use (->>)"
+  [out in]
+  (async/pipe in out))
+
 (defn execute-queries
-  [{:keys [concurrency query bindings nr] :as ctx} output-ch]
-  (let [query (-> query slurp ring.codec/url-encode)
-        input-ch (binding-loader/get-bindings bindings nr)]
-    (p/create
-     (fn [resolve reject]
-       (go
-         (log/trace "launching with concurrency:" concurrency)
-         (<! (async/pipeline-blocking concurrency
-                                      output-ch
-                                      (map (partial execute-query ctx query))
-                                      input-ch))
-         (resolve true))))))
+  [{:keys [concurrency query bindings nr batch-size] :as ctx} output-ch]
+  (log/trace "launching with concurrency:" concurrency)
+  (let [query (-> query slurp ring.codec/url-encode)]
+    (->> (binding-loader/get-bindings bindings nr batch-size)
+         (pipeline-blocking concurrency (map (partial execute-query ctx query)))
+         (async-xform (mapcat (fn [{:keys [success result] :as x}]
+                                (if (true? success)
+                                  (map (fn [r] (assoc x :result r)) result)
+                                  [x]))))
+         (async-pipe output-ch))))
 
 (defn show-progress
   [{:keys [progress concurrency] :as ctx} n mux]
@@ -129,16 +146,16 @@
   (println "Total Duration:" (str total-duration "msecs")))
 
 (defn process
-  [{:keys [concurrency nr] :as ctx}]
+  [{:keys [concurrency nr batch-size] :as ctx}]
+  (log/info "processing" nr "requests with concurrency" concurrency "batch-size" batch-size)
   (let [output-ch (async/chan (* 4 concurrency))
-        mux (async/mult output-ch)]
-    (log/info "processing" nr "requests with concurrency" concurrency)
-    @(-> (p/all [(t/now)
-                 (execute-queries ctx output-ch)
-                 (show-progress ctx nr mux)
+        mux (async/mult output-ch)
+        start (t/now)]
+    (execute-queries ctx output-ch)
+    @(-> (p/all [(show-progress ctx nr mux)
                  (compute-stats ctx nr mux)])
          (p/then
-          (fn [[start _ _ stats]]
+          (fn [[_ stats]]
             (let [end (t/now)
                   d (t/duration end start)]
               (-> stats
