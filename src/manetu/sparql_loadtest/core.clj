@@ -5,7 +5,7 @@
             [medley.core :as m]
             [promesa.core :as p]
             [taoensso.timbre :as log]
-            [clojure.core.async :refer [<! go go-loop] :as async]
+            [clojure.core.async :refer [<!! <! >!! go go-loop] :as async]
             [progrock.core :as pr]
             [doric.core :refer [table]]
             [ring.util.codec :as ring.codec]
@@ -34,9 +34,18 @@
                      :duration d)))))))
 
 (defn- pipeline-blocking
-  [nr xf in]
+  [nr f in]
   (let [out (async/chan nr)]
-    (async/pipeline-blocking nr out xf in)
+    (-> (p/all
+         (map (fn [_]
+                (p/vthread
+                 (loop []
+                   (when-let [m (<!! in)]
+                     (>!! out (f m))
+                     (recur)))))
+              (range nr)))
+        (p/then (fn [_]
+                  (async/close! out))))
     out))
 
 (defn async-xform
@@ -57,7 +66,7 @@
   (log/trace "launching with concurrency:" concurrency)
   (let [query (-> query slurp ring.codec/url-encode)]
     (->> (binding-loader/get-bindings bindings nr batch-size)
-         (pipeline-blocking concurrency (map (partial execute-query ctx query)))
+         (pipeline-blocking concurrency (partial execute-query ctx query))
          (async-xform (mapcat (fn [{:keys [success result] :as x}]
                                 (if (true? success)
                                   (map (fn [r] (assoc x :result r)) result)
